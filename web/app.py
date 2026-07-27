@@ -10,8 +10,15 @@ import secrets
 import shutil
 import subprocess
 import sys
-import psycopg
-import requests
+
+# Load .env at import so a long-lived uvicorn does not serve stale config, and so the
+# env=dict(os.environ) handed to spawned pipeline runs carries current flags. The spawned run also
+# loads the file itself (defence in depth) — see pipeline/envfile.py.
+from pipeline import envfile  # noqa: E402
+envfile.load()
+
+import psycopg  # noqa: E402
+import requests  # noqa: E402
 from fastapi import FastAPI, Form, Depends, HTTPException
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse

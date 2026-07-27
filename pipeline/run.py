@@ -14,10 +14,19 @@ import os
 import subprocess
 import sys
 import time
-import psycopg
-from collectors import legit, search
-from pipeline import (synthesize, release_gate, reach_bridge, report, reviewers, queries, extract,
-                      select, registry, plan_queries, revise, followup, figures, priors)
+
+# MUST run before the imports below: those modules read their config at MODULE SCOPE
+# (plan_queries reads PLANNER_ENABLED, extract reads its model slugs, revise/followup read their
+# round caps), so anything loaded first freezes whatever environment the parent happened to have.
+# The web app spawns this module with env=dict(os.environ) from a uvicorn that may have started
+# days before a flag existed — see pipeline/envfile.py for the measured incident.
+from pipeline import envfile  # noqa: E402
+envfile.load()
+
+import psycopg  # noqa: E402
+from collectors import legit, search  # noqa: E402
+from pipeline import (synthesize, release_gate, reach_bridge, report, reviewers, queries,  # noqa: E402
+                      extract, select, registry, plan_queries, revise, followup, figures, priors)
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 LEGIT = {"x", "github", "youtube", "rss", "web", "hackernews", "web_search",

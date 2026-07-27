@@ -318,3 +318,43 @@ and check whether an older module already learned the constant. When layering a 
 deterministic path, the model ADDS; it never replaces the part with guarantees. And build the cheap
 offline eval BEFORE enabling the feature: it converts "the planner seems fine" into two concrete
 defects at the cost of a rounding error.
+
+## 30. A long-lived process cannot inherit config that did not exist when it started
+`PLANNER_ENABLED=1` sat in `.env` and the runs still reported `planner: fallback_disabled`. The web
+app had been up since two days before that flag was added, and `/api/ask` spawns `pipeline.run` with
+`env=dict(os.environ)`, so every chat-triggered run inherited a uvicorn environment where the flag
+did not exist. `/proc/<pid>/environ` confirmed it: every v3 flag `<ABSENT>` in a process whose config
+file listed all of them.
+
+What made it survive verification: CLI runs worked, because they were launched after `set -a; . ./.env`.
+Both paths call the same `request_run()`, so "the chat path is proven because it shares the function"
+felt safe. It is not the same claim. A shared function does not mean a shared environment, and the
+difference only shows up in the caller nobody tested.
+
+This is the same root cause as lesson 29's revoked key, where `docker restart` reused the captured
+environment and kept authenticating with a rotated-away credential. Twice now, from the same
+misconception: editing a config file does nothing to a process that already read it.
+
+**Fix:** `pipeline/envfile.py` loads `.env` for variables that are ABSENT (never overriding an
+explicit export, so per-run overrides still work), called at the top of `run.py`, `submit.py`, and
+`web/app.py`, before the imports that read config at module scope, since anything imported first
+freezes the parent's environment.
+**Takeaway:** when a feature is gated by an env var, test it through the ENTRY POINT a user actually
+touches, not the one that is convenient to script. And when a fix is "restart the thing," ask what
+makes the next person's edit silently do nothing.
+
+## 31. Think-token budgets scale with the INPUT's complexity, not the output's
+Second time in one upgrade. `plan_queries` shipped with `max_tokens=800`, plenty for its ~200-token
+JSON, and truncated all ten eval questions. Fixed to 4000. Then `decompose` shipped with 2000,
+plenty for its ~300-token answer, and truncated on a question naming ten peptides plus import-alert
+IDs plus exclusion clauses, falling back to a single seed sub-question.
+
+The trap: budgeting from the ANSWER size is the obvious mental model and it is wrong. A reasoning
+model spends think tokens working through the INPUT, so a long, multi-entity, constraint-heavy
+question can exhaust the pool before emitting a single character of the short answer.
+**Fix:** budget for the reasoning, not the reply, and scale the ceiling with the longest input the
+call will realistically see (`decompose` gets 6000 where `plan_queries` gets 4000, because it reads
+the raw question).
+**Takeaway:** both times the fail-soft path worked perfectly and reported `truncated` honestly, which
+is the only reason this was diagnosable at all rather than looking like a model that "just doesn't
+decompose well."
