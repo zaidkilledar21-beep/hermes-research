@@ -1,7 +1,7 @@
 # Handoff — what to actually do next
 
-Narrative/context: `tasks/status.md`. Patterns/mistakes: `tasks/lessons.md`. Checkable backlog:
-`tasks/todo.md`. This file = "what's the very next action," kept short on purpose — update it at the
+Narrative/context: `docs/internal/status.md`. Patterns/mistakes: `docs/lessons.md`. Checkable backlog:
+`docs/internal/todo.md`. This file = "what's the very next action," kept short on purpose — update it at the
 end of every session.
 
 ## Right now (as of 2026-07-25)
@@ -54,7 +54,7 @@ injection re-verify, full walled E2E.
   A literal key was committed to git once (lessons.md #18) — never put one in a tracked file.
 
 ## Housekeeping reminders for whoever (human or Claude) picks this up
-- Read `tasks/lessons.md` before touching reach/reviewer/Camoufox/Hermes-tunnel code again — several
+- Read `docs/lessons.md` before touching reach/reviewer/Camoufox/Hermes-tunnel code again — several
   of those bugs are easy to reintroduce.
 - Keep these four files current going forward — this handoff was badly stale for a stretch mid-build;
   don't let that happen again.

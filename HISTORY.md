@@ -3,8 +3,8 @@
 The public repo starts from a squashed root (the private lineage carried operational details —
 server addresses, account identifiers — that don't belong in public blobs). This file preserves
 the engineering narrative those commits told. Fuller running commentary lives in
-[tasks/status.md](tasks/status.md); the distilled mistakes live in
-[tasks/lessons.md](tasks/lessons.md).
+[docs/internal/status.md](docs/internal/status.md); the distilled mistakes live in
+[docs/lessons.md](docs/lessons.md).
 
 ## v1 — the spine (days 1–2)
 

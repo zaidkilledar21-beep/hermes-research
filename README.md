@@ -55,7 +55,7 @@ The repo carries its own measurement instruments, and no prompt or retrieval cha
 
 - `evals/run_eval.py` — offline discovery-targeting eval (10 hand-labelled questions, deterministic scorer, no network or DB needed in `--plan-only`; `--planner` mode exercises the real LLM planner for cents, cached).
 - `evals/capability_metrics.py` — SQL-only scorecard: retrieval aim, extraction liveness, finding specificity, brief entity retention, repair rate, gap closure, per-run screening ledger.
-- `tasks/lessons.md` — **30 numbered engineering lessons** learned the hard way, from "a reasoning model's think tokens spend from *your* max_tokens" to "a gate that only holds at one layer is not a gate". Arguably the most reusable file in the repo.
+- `docs/lessons.md` — **30 numbered engineering lessons** learned the hard way, from "a reasoning model's think tokens spend from *your* max_tokens" to "a gate that only holds at one layer is not a gate". Arguably the most reusable file in the repo.
 
 Model choices are measured, not vibed: two bakeoffs (extraction fallback, synthesis) both concluded **keep the current model** — the cheaper candidate was systematically more permissive on relevance, the fancier one produced more findings with *less* entity density. Total bakeoff spend: ~$0.12.
 
@@ -89,7 +89,8 @@ evals/           eval harness + capability scorecard + frozen baselines
 db/              Postgres schema + numbered migrations (001–014)
 web/             Mission Control: FastAPI console (overview / research / chat / services / cost)
 deploy/          VPS provisioning, container run scripts, watchdog, kill switch
-tasks/           living docs: status.md (history), lessons.md (the 30 lessons), todo.md
+docs/            lessons.md (the 30 engineering lessons) + internal/ working notes
+                 (status.md build history, handoff.md, todo.md)
 ```
 
 ## Running it

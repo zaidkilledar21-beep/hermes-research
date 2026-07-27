@@ -1,7 +1,7 @@
 # Status — read this first in a new session
 
-**Last updated: 2026-07-27.** Pick this up cold: read this → `tasks/handoff.md` (what's next) →
-`tasks/lessons.md` (don't repeat these) → `tasks/todo.md` (checkable backlog).
+**Last updated: 2026-07-27.** Pick this up cold: read this → `docs/internal/handoff.md` (what's next) →
+`docs/lessons.md` (don't repeat these) → `docs/internal/todo.md` (checkable backlog).
 
 > **2026-07-27 — v3 BUILT + DEPLOYED: closing the gap to expert-level research.** Driven by owner
 > feedback that the peptide business plan read "extremely generic". Diagnosis was measured, not
