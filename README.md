@@ -1,6 +1,15 @@
 # Hermes Research Engine
 
+![cost per run](https://img.shields.io/badge/cost%20per%20run-~%240.05-2ea44f)
+![brief retention](https://img.shields.io/badge/brief%20entity%20retention-0.244%20%E2%86%92%200.838-2ea44f)
+![retrieval aim](https://img.shields.io/badge/plan--only%20aim-1.00-2ea44f)
+![tests](https://img.shields.io/badge/tests-238%20passing-2ea44f)
+![review cost](https://img.shields.io/badge/adversarial%20review-%240-2ea44f)
+![license](https://img.shields.io/badge/license-MIT-blue)
+
 An autonomous research engine built on [Nous Research's Hermes agent stack](https://github.com/NousResearch/Hermes-Agent). It takes a hard commercial question and returns a cited intelligence report that two independent reviewer models have already challenged. A typical run costs about five cents.
+
+Those numbers are outputs of the repo's own instruments, not estimates: [`evals/capability_metrics.py`](evals/capability_metrics.py) computes retention and aim from the database, and [`evals/baseline-capability.json`](evals/baseline-capability.json) is the frozen baseline they are measured against.
 
 A run works like this. You submit a question. An LLM planner decides what to search for rather than searching the words you typed. Collectors fan out across the open web, Reddit, forums, X, GitHub, Hacker News, SEC filings, court dockets, and FDA enforcement records. Evidence gets extracted and relevance-judged before synthesis, and every observed claim carries a verbatim quote from the source it cites. Two frontier models then challenge each finding, and anything they reject gets one defend-or-revise pass. The engine reads its own unanswered gaps and can run a second, sharper collection round off them. A deterministic release gate, written in code rather than as a prompt, decides what ships.
 
@@ -130,6 +139,13 @@ X search covers only a recent window on the standard API tier, so the engine tre
 Search-engine throttling is detected and reported, not defeated. Datacenter IPs get flagged, and a residential proxy path exists for the browser reader.
 
 This is a research tool. What you point it at, and what you do with the reports, is your responsibility.
+
+## Further reading
+
+[`docs/lessons.md`](docs/lessons.md) holds the 30 numbered engineering failures behind the design
+choices above, each with its root cause. [`HISTORY.md`](HISTORY.md) is the v1 to v3 build narrative.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) covers the keep-or-revert rule, the test conventions, and the
+constraints a change has to respect.
 
 ## License
 
