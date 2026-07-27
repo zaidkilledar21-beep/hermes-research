@@ -137,33 +137,81 @@ def run_metrics(conn, run_ids: list[int]) -> dict:
         r.setdefault("screening", {})["cited"] = len(cited)
         r["screening"]["dispositions"] = by_disp
 
-    # repair rate — degrades to None before migration_011
-    repair = _maybe(conn, f"""SELECT count(*) FILTER (WHERE revision_round > 0 AND disposition='accepted'),
-                                     count(*) FILTER (WHERE disposition IN ('rejected_by_reviewer',
-                                                                            'superseded_by_revision'))
-                              FROM findings WHERE run_id IN ({ph})""", run_ids)
-    # gap closure — degrades to None before migration_012
-    closure = _maybe(conn, f"""SELECT count(DISTINCT s.sub_id),
-                                      count(DISTINCT s.sub_id) FILTER (WHERE EXISTS (
-                                          SELECT 1 FROM findings f WHERE f.run_id = s.run_id
-                                          AND f.disposition='accepted'))
-                               FROM sub_questions s
-                               WHERE s.run_id IN ({ph}) AND s.round > 0""", run_ids)
+    # ── repair rate (gap 6) ───────────────────────────────────────────────────────────────────
+    # DENOMINATOR IS THE REVIEWS TABLE, not dispositions. The first version counted findings whose
+    # disposition was 'rejected_by_reviewer' or 'superseded_by_revision', and its numerator wanted
+    # revision_round>0 AND disposition='accepted' — so a revision that succeeded and was LATER
+    # superseded by a follow-up round's re-synthesis vanished from the numerator while its original
+    # stayed in the denominator. Run 43 reported repair_rate 0.0 for a run whose own notes said
+    # "1 rejected -> 1 revised". Dispositions are mutable; a reject review is a historical fact.
+    #
+    # Two numbers, because they answer different questions:
+    #   repairs_attempted  — did the loop produce a replacement at all (the loop working)
+    #   repairs_surviving  — did that replacement survive re-review AND any later round (the loop
+    #                        helping). Reported separately so a low survival rate can never be
+    #                        mistaken for the loop never firing.
+    repair = _maybe(conn, f"""
+        SELECT (SELECT count(DISTINCT f.parent_finding_id) FROM findings f
+                WHERE f.run_id IN ({ph}) AND f.revision_round > 0),
+               (SELECT count(*) FROM findings f
+                WHERE f.run_id IN ({ph}) AND f.revision_round > 0
+                AND f.disposition = 'accepted'),
+               (SELECT count(DISTINCT r.finding_id) FROM reviews r
+                WHERE r.run_id IN ({ph}) AND r.severity = 'reject')
+    """, run_ids * 3)
+
+    # ── gap closure (gap 7) ──────────────────────────────────────────────────────────────────
+    # A COUNT PROXY, and labelled as one. The first version asked "does this run have any accepted
+    # finding" per round-1 sub-question — which is true whenever the run produced anything at all,
+    # so it scored 1.0 on run 43 while that run's own notes recorded "unknowns 3->3", i.e. nothing
+    # closed. It measured that iteration HAPPENED, and reported it as iteration having WORKED.
+    #
+    # What is honestly derivable: unknown findings that a later round superseded (the gaps a round
+    # inherited) versus unknown findings still live (the gaps that survived). Semantic matching of
+    # WHICH unknown got answered is a judgement call this instrument does not make — the same limit
+    # pipeline/followup.closure() documents for itself.
+    closure = _maybe(conn, f"""
+        SELECT count(*) FILTER (WHERE label='unknown'
+                                AND disposition = 'superseded_by_revision'),
+               count(*) FILTER (WHERE label='unknown'
+                                AND COALESCE(disposition,'') <> 'superseded_by_revision')
+        FROM findings WHERE run_id IN ({ph})
+    """, run_ids)
+    # Rounds actually run — separates "iteration never fired" from "iteration fired and closed
+    # nothing". Without it a 0.0 closure is unreadable.
+    rounds = _maybe(conn, f"SELECT count(*) FROM sub_questions "
+                          f"WHERE run_id IN ({ph}) AND round > 0", run_ids)
 
     per_run = {str(k): v for k, v in sorted(runs.items())}
     extracted_live = sum(1 for v in runs.values() if v.get("extracted"))
     aims = [v["aim"] for v in runs.values() if v.get("aim") is not None]
     specs = [v["specificity"] for v in runs.values() if v.get("specificity") is not None]
+
+    attempted = surviving = rejected = None
+    if repair:
+        attempted, surviving, rejected = repair[0]
+    gaps_inherited = gaps_open = None
+    if closure:
+        gaps_inherited, gaps_open = closure[0]
+
     summary = {
         "n_runs": len(runs),
         "extraction_liveness": round(extracted_live / len(runs), 3) if runs else None,
         "mean_aim": round(sum(aims) / len(aims), 3) if aims else None,
         "mean_specificity": round(sum(specs) / len(specs), 3) if specs else None,
         "subs_per_run": round(sum(v.get("subs", 0) for v in runs.values()) / len(runs), 2) if runs else None,
-        "repair_rate": (round(repair[0][0] / repair[0][1], 3) if repair and repair[0][1] else
-                        (0.0 if repair else None)),
-        "gap_closure": (round(closure[0][1] / closure[0][0], 3) if closure and closure[0][0] else
-                        (0.0 if closure else None)),
+        # None (not 0.0) when nothing was ever rejected: no reject reviews means the metric has no
+        # denominator, which is not the same as a loop that failed. Same discipline as `aim`.
+        "repair_rate": (round(attempted / rejected, 3)
+                        if rejected else (None if repair else None)),
+        "repairs_attempted": attempted,
+        "repairs_surviving": surviving,
+        "rejects_reviewed": rejected,
+        "followup_subquestions": rounds[0][0] if rounds else None,
+        "gaps_inherited_by_later_round": gaps_inherited,
+        "gaps_still_open": gaps_open,
+        "gap_closure": (round(max(0.0, (gaps_inherited - gaps_open) / gaps_inherited), 3)
+                        if gaps_inherited else None),
     }
     return {"summary": summary, "runs": per_run}
 
