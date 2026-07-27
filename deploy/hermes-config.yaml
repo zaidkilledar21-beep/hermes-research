@@ -1,0 +1,14 @@
+# Hermes Agent config → /home/trader/.hermes/config.yaml (chmod 600).
+# Director brain = Tencent Hy3 via OpenRouter (agentic-search leader, anti-hallucination).
+model:
+  provider: custom
+  model: tencent/hy3-20260706
+  base_url: https://openrouter.ai/api/v1
+  # NEVER commit a real key here. Supply it via the OPENROUTER_API_KEY env var on the box
+  # (see config/hermes.env.example). A live key was committed once and had to be revoked.
+  api_key: "${OPENROUTER_API_KEY}"
+
+# Safety posture per plan + Hermes security docs:
+# - dashboard bound loopback, basic-auth'd, fronted by Cloudflare tunnel (never public)
+# - approval gate on (never off); gateway default-deny
+approval_mode: smart

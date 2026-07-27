@@ -1,0 +1,350 @@
+{
+  "summary": {
+    "n_runs": 14,
+    "extraction_liveness": 0.571,
+    "mean_aim": 0.204,
+    "mean_specificity": 0.33,
+    "subs_per_run": 1.0,
+    "repair_rate": null,
+    "gap_closure": null
+  },
+  "runs": {
+    "29": {
+      "retrieved": 268,
+      "extracted": 83,
+      "relevant": 7,
+      "aim": 0.084,
+      "screening": {
+        "retrieved": 268,
+        "extracted": 83,
+        "relevant": 7,
+        "considered_window": 60,
+        "cited": 13,
+        "dispositions": {
+          "accepted": 13,
+          "rejected_by_reviewer": 1
+        }
+      },
+      "subs": 1,
+      "findings": 14,
+      "accepted": 13,
+      "unknowns": 0,
+      "specific": 6,
+      "specificity": 0.462
+    },
+    "30": {
+      "retrieved": 167,
+      "extracted": 91,
+      "relevant": 24,
+      "aim": 0.264,
+      "screening": {
+        "retrieved": 167,
+        "extracted": 91,
+        "relevant": 24,
+        "considered_window": 60,
+        "cited": 30,
+        "dispositions": {
+          "accepted": 26,
+          "quarantined_invalid_label": 2
+        }
+      },
+      "subs": 1,
+      "findings": 28,
+      "accepted": 26,
+      "unknowns": 1,
+      "specific": 5,
+      "specificity": 0.192
+    },
+    "31": {
+      "retrieved": 190,
+      "extracted": 49,
+      "relevant": 17,
+      "aim": 0.347,
+      "screening": {
+        "retrieved": 190,
+        "extracted": 49,
+        "relevant": 17,
+        "considered_window": 60,
+        "cited": 14,
+        "dispositions": {
+          "accepted": 21,
+          "rejected_by_reviewer": 2
+        }
+      },
+      "subs": 1,
+      "findings": 23,
+      "accepted": 21,
+      "unknowns": 1,
+      "specific": 5,
+      "specificity": 0.238
+    },
+    "32": {
+      "retrieved": 205,
+      "extracted": 35,
+      "relevant": 9,
+      "aim": 0.257,
+      "screening": {
+        "retrieved": 205,
+        "extracted": 35,
+        "relevant": 9,
+        "considered_window": 60,
+        "cited": 13,
+        "dispositions": {
+          "accepted": 10
+        }
+      },
+      "subs": 1,
+      "findings": 10,
+      "accepted": 10,
+      "unknowns": 1,
+      "specific": 2,
+      "specificity": 0.2
+    },
+    "33": {
+      "retrieved": 190,
+      "extracted": 0,
+      "relevant": 0,
+      "aim": null,
+      "screening": {
+        "retrieved": 190,
+        "extracted": 0,
+        "relevant": 0,
+        "considered_window": 60,
+        "cited": 15,
+        "dispositions": {
+          "accepted": 13,
+          "rejected_by_reviewer": 1
+        }
+      },
+      "subs": 1,
+      "findings": 14,
+      "accepted": 13,
+      "unknowns": 2,
+      "specific": 4,
+      "specificity": 0.308
+    },
+    "34": {
+      "retrieved": 251,
+      "extracted": 0,
+      "relevant": 0,
+      "aim": null,
+      "screening": {
+        "retrieved": 251,
+        "extracted": 0,
+        "relevant": 0,
+        "considered_window": 60,
+        "cited": 19,
+        "dispositions": {
+          "accepted": 14
+        }
+      },
+      "subs": 1,
+      "findings": 14,
+      "accepted": 14,
+      "unknowns": 3,
+      "specific": 5,
+      "specificity": 0.357
+    },
+    "35": {
+      "retrieved": 186,
+      "extracted": 0,
+      "relevant": 0,
+      "aim": null,
+      "screening": {
+        "retrieved": 186,
+        "extracted": 0,
+        "relevant": 0,
+        "considered_window": 60,
+        "cited": 7,
+        "dispositions": {
+          "accepted": 3
+        }
+      },
+      "subs": 1,
+      "findings": 3,
+      "accepted": 3,
+      "unknowns": 1,
+      "specific": 1,
+      "specificity": 0.333
+    },
+    "36": {
+      "retrieved": 255,
+      "extracted": 0,
+      "relevant": 0,
+      "aim": null,
+      "screening": {
+        "retrieved": 255,
+        "extracted": 0,
+        "relevant": 0,
+        "considered_window": 60,
+        "cited": 14,
+        "dispositions": {
+          "accepted": 13,
+          "rejected_by_reviewer": 2
+        }
+      },
+      "subs": 1,
+      "findings": 15,
+      "accepted": 13,
+      "unknowns": 1,
+      "specific": 4,
+      "specificity": 0.308
+    },
+    "37": {
+      "retrieved": 218,
+      "extracted": 102,
+      "relevant": 27,
+      "aim": 0.265,
+      "screening": {
+        "retrieved": 218,
+        "extracted": 102,
+        "relevant": 27,
+        "considered_window": 60,
+        "cited": 14,
+        "dispositions": {
+          "accepted": 13
+        }
+      },
+      "subs": 1,
+      "findings": 13,
+      "accepted": 13,
+      "unknowns": 1,
+      "specific": 2,
+      "specificity": 0.154
+    },
+    "38": {
+      "retrieved": 199,
+      "extracted": 95,
+      "relevant": 6,
+      "aim": 0.063,
+      "screening": {
+        "retrieved": 199,
+        "extracted": 95,
+        "relevant": 6,
+        "considered_window": 60,
+        "cited": 12,
+        "dispositions": {
+          "accepted": 7,
+          "rejected_by_reviewer": 2
+        }
+      },
+      "subs": 1,
+      "findings": 9,
+      "accepted": 7,
+      "unknowns": 2,
+      "specific": 4,
+      "specificity": 0.571
+    },
+    "39": {
+      "retrieved": 273,
+      "extracted": 110,
+      "relevant": 36,
+      "aim": 0.327,
+      "screening": {
+        "retrieved": 273,
+        "extracted": 110,
+        "relevant": 36,
+        "considered_window": 60,
+        "cited": 32,
+        "dispositions": {
+          "accepted": 12
+        }
+      },
+      "subs": 1,
+      "findings": 12,
+      "accepted": 12,
+      "unknowns": 2,
+      "specific": 1,
+      "specificity": 0.083
+    },
+    "40": {
+      "retrieved": 305,
+      "extracted": 73,
+      "relevant": 2,
+      "aim": 0.027,
+      "screening": {
+        "retrieved": 305,
+        "extracted": 73,
+        "relevant": 2,
+        "considered_window": 60,
+        "cited": 2,
+        "dispositions": {
+          "accepted": 5
+        }
+      },
+      "subs": 1,
+      "findings": 5,
+      "accepted": 5,
+      "unknowns": 3,
+      "specific": 0,
+      "specificity": 0.0
+    },
+    "41": {
+      "retrieved": 226,
+      "extracted": 0,
+      "relevant": 0,
+      "aim": null,
+      "screening": {
+        "retrieved": 226,
+        "extracted": 0,
+        "relevant": 0,
+        "considered_window": 60,
+        "cited": 9,
+        "dispositions": {
+          "accepted": 11
+        }
+      },
+      "subs": 1,
+      "findings": 11,
+      "accepted": 11,
+      "unknowns": 0,
+      "specific": 9,
+      "specificity": 0.818
+    },
+    "42": {
+      "retrieved": 292,
+      "extracted": 0,
+      "relevant": 0,
+      "aim": null,
+      "screening": {
+        "retrieved": 292,
+        "extracted": 0,
+        "relevant": 0,
+        "considered_window": 60,
+        "cited": 19,
+        "dispositions": {
+          "accepted": 20
+        }
+      },
+      "subs": 1,
+      "findings": 20,
+      "accepted": 20,
+      "unknowns": 2,
+      "specific": 12,
+      "specificity": 0.6
+    }
+  },
+  "brief_retention": {
+    "synthesis_id": 5,
+    "runs": [
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42
+    ],
+    "finding_entities": 401,
+    "brief_entities": 98,
+    "retention": 0.244,
+    "brief_chars": 25338
+  }
+}

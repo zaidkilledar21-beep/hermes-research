@@ -1,0 +1,17 @@
+# Loopback shim in front of the Hermes dashboard. cloudflared → Caddy(:9120) → Hermes(:9119).
+# Hermes has a DNS-rebinding guard (rejects non-loopback Host) AND a websocket Origin check.
+# Rewriting BOTH Host and Origin to loopback makes Hermes accept HTTP + websocket from the tunnel.
+# X-Forwarded-* still carry the real public host so Hermes builds correct public URLs.
+{
+	auto_https off
+	admin off
+}
+
+:9120 {
+	reverse_proxy 127.0.0.1:9119 {
+		header_up Host 127.0.0.1:9119
+		header_up Origin http://127.0.0.1:9119
+		header_up X-Forwarded-Host chat.example.com
+		header_up X-Forwarded-Proto https
+	}
+}

@@ -1,0 +1,180 @@
+{
+  "mode": "plan-only (legacy plan)",
+  "summary": {
+    "questions": 10,
+    "mean_score": null,
+    "mean_aim": 0.85,
+    "worst": null
+  },
+  "rows": [
+    {
+      "id": "3plguys-inventory",
+      "queries": 2,
+      "alias_coverage": 1.0,
+      "term_coverage": 0.0,
+      "aim": 0.5,
+      "missing_aliases": [],
+      "missing_terms": [
+        "missing inventory",
+        "do not use"
+      ],
+      "selected": null,
+      "reach": null,
+      "signal": null,
+      "diversity": null,
+      "vendor_pull": null,
+      "score": null,
+      "mode": "plan-only"
+    },
+    {
+      "id": "pcac-reserve",
+      "queries": 2,
+      "alias_coverage": 1.0,
+      "term_coverage": 0.5,
+      "aim": 0.75,
+      "missing_aliases": [],
+      "missing_terms": [
+        "terminated"
+      ],
+      "selected": null,
+      "reach": null,
+      "signal": null,
+      "diversity": null,
+      "vendor_pull": null,
+      "score": null,
+      "mode": "plan-only"
+    },
+    {
+      "id": "highrisk-chargebacks",
+      "queries": 2,
+      "alias_coverage": 1.0,
+      "term_coverage": 0.0,
+      "aim": 0.5,
+      "missing_aliases": [],
+      "missing_terms": [
+        "reserve"
+      ],
+      "selected": null,
+      "reach": null,
+      "signal": null,
+      "diversity": null,
+      "vendor_pull": null,
+      "score": null,
+      "mode": "plan-only"
+    },
+    {
+      "id": "ruo-peptide-labeling",
+      "queries": 1,
+      "alias_coverage": 1.0,
+      "term_coverage": 1.0,
+      "aim": 1.0,
+      "missing_aliases": [],
+      "missing_terms": [],
+      "selected": null,
+      "reach": null,
+      "signal": null,
+      "diversity": null,
+      "vendor_pull": null,
+      "score": null,
+      "mode": "plan-only"
+    },
+    {
+      "id": "prep-center-terminated",
+      "queries": 2,
+      "alias_coverage": 1.0,
+      "term_coverage": 0.5,
+      "aim": 0.75,
+      "missing_aliases": [],
+      "missing_terms": [
+        "missing inventory"
+      ],
+      "selected": null,
+      "reach": null,
+      "signal": null,
+      "diversity": null,
+      "vendor_pull": null,
+      "score": null,
+      "mode": "plan-only"
+    },
+    {
+      "id": "peptide-payment-processor-ban",
+      "queries": 2,
+      "alias_coverage": 1.0,
+      "term_coverage": 1.0,
+      "aim": 1.0,
+      "missing_aliases": [],
+      "missing_terms": [],
+      "selected": null,
+      "reach": null,
+      "signal": null,
+      "diversity": null,
+      "vendor_pull": null,
+      "score": null,
+      "mode": "plan-only"
+    },
+    {
+      "id": "coldchain-damaged",
+      "queries": 2,
+      "alias_coverage": 1.0,
+      "term_coverage": 1.0,
+      "aim": 1.0,
+      "missing_aliases": [],
+      "missing_terms": [],
+      "selected": null,
+      "reach": null,
+      "signal": null,
+      "diversity": null,
+      "vendor_pull": null,
+      "score": null,
+      "mode": "plan-only"
+    },
+    {
+      "id": "searxng-selfhost",
+      "queries": 1,
+      "alias_coverage": 1.0,
+      "term_coverage": 1.0,
+      "aim": 1.0,
+      "missing_aliases": [],
+      "missing_terms": [],
+      "selected": null,
+      "reach": null,
+      "signal": null,
+      "diversity": null,
+      "vendor_pull": null,
+      "score": null,
+      "mode": "plan-only"
+    },
+    {
+      "id": "shopify-app-scam",
+      "queries": 2,
+      "alias_coverage": 1.0,
+      "term_coverage": 1.0,
+      "aim": 1.0,
+      "missing_aliases": [],
+      "missing_terms": [],
+      "selected": null,
+      "reach": null,
+      "signal": null,
+      "diversity": null,
+      "vendor_pull": null,
+      "score": null,
+      "mode": "plan-only"
+    },
+    {
+      "id": "supplement-3pl-chargeback",
+      "queries": 2,
+      "alias_coverage": 1.0,
+      "term_coverage": 1.0,
+      "aim": 1.0,
+      "missing_aliases": [],
+      "missing_terms": [],
+      "selected": null,
+      "reach": null,
+      "signal": null,
+      "diversity": null,
+      "vendor_pull": null,
+      "score": null,
+      "mode": "plan-only"
+    }
+  ]
+}

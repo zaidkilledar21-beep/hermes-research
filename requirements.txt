@@ -1,0 +1,9 @@
+# Hermes Research Engine — Python deps for collectors + pipeline (runs in the hermes container).
+psycopg[binary]>=3.2
+requests>=2.32
+feedparser>=6.0
+yt-dlp>=2026.1.1
+# web UI (served on loopback, fronted by Cloudflare Tunnel + Access)
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9

@@ -1,0 +1,10 @@
+tunnel: 10561810-53df-4a8c-b22b-2d32869b38f8
+credentials-file: /home/trader/.cloudflared/10561810-53df-4a8c-b22b-2d32869b38f8.json
+ingress:
+  - hostname: research.example.com
+    service: http://localhost:8080
+  - hostname: chat.example.com
+    # → Caddy loopback shim (:9120), which rewrites Host + Origin to loopback so Hermes accepts both
+    # HTTP and the chat websocket. cloudflared does no rewrite here; Caddy owns that.
+    service: http://localhost:9120
+  - service: http_status:404

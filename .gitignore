@@ -1,0 +1,22 @@
+# never commit secrets or local env
+.env
+*.env
+!*.env.example
+.venv/
+__pycache__/
+*.pyc
+
+# Codex build transcripts — scratch output from collaborative builds, not source. Large, noisy,
+# and they echo file contents verbatim, so they are the most likely place for a secret to leak in.
+.collab/*.txt
+# Research payloads handed to Codex for review (findings dumps, report drafts). Same reasoning:
+# scratch, large, and regenerable from the database — the runs themselves are the record.
+.collab/*.md
+
+# local scratch
+*.log
+
+# Rendered runtime configs may carry real keys — only the template belongs in git.
+deploy/hermes-config.local.yaml
+
+

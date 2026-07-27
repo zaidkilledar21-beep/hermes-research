@@ -1,0 +1,49 @@
+# SearXNG config for the research engine's web-search source. Loopback-only, single internal user
+# (the pipeline's collect_websearch). Merges over SearXNG defaults so engines stay at their stock set.
+use_default_settings: true
+
+general:
+  instance_name: "hermes-research-search"
+
+server:
+  # secret_key is injected by deploy/searxng-run.sh (openssl-generated) — do not commit a real one.
+  secret_key: "__REPLACE_AT_DEPLOY__"
+  bind_address: "0.0.0.0"      # inside the container; the host maps only 127.0.0.1:8888 to it
+  port: 8080
+  limiter: false               # we are the only caller; the bot-limiter would block our own JSON calls
+  public_instance: false
+
+search:
+  formats:
+    - html
+    - json                     # REQUIRED — the pipeline calls /search?format=json; off by default
+  autocomplete: ""
+  default_lang: "en"
+
+# Keep the default engine set (Google/Bing/DuckDuckGo/etc). Multi-engine aggregation is what makes
+# this resilient when any single engine rate-limits us.
+
+outgoing:
+  # Route engine requests through the SAME residential proxy the reach container uses.
+  #
+  # WHY: the box is a Hetzner datacenter IP. Once discovery went from 1-2 queries per sub-question
+  # to ~5 (failure-language families), Google CSE started answering "unusual traffic from your
+  # network" and DuckDuckGo returned 403s, each suspending that engine for 180s. A suspended engine
+  # returns an EMPTY result set that is indistinguishable from a topic nobody wrote about — the
+  # pipeline now detects that (collectors/search.py) but detection is not capacity.
+  #
+  # The placeholder below is substituted by deploy/render-searxng-settings.py from REACH_PROXY_* in
+  # .env; only the placeholder lives in git, because a proxy URL carries its own credentials
+  # (lessons.md #18 — a real key was committed once already). This comment deliberately does NOT
+  # spell the placeholder out: a plain string replace would substitute the live credential here too,
+  # writing the password into the file twice and permanently defeating the renderer's
+  # "did every placeholder get replaced" check.
+  proxies:
+    all://:
+      - __PROXY_URL__
+  # Residential exits are slower than a datacenter hop, and a search that times out costs a whole
+  # query's worth of coverage.
+  request_timeout: 15.0
+  max_request_timeout: 25.0
+  pool_connections: 20
+  pool_maxsize: 10

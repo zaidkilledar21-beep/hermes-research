@@ -1,0 +1,95 @@
+# Hermes Research Engine — container topology + isolation contract.
+# Lives at /opt/hermes/docker-compose.yml on the VPS. Run: sudo docker compose up -d
+#
+# THE SECURITY MODEL IS THIS FILE. Two containers, two networks, one one-way dropbox:
+#   - hermes  holds ALL real secrets (OpenRouter/Neon/Composio/Telegram). Reads dropbox RO.
+#   - reach   holds ZERO real secrets (burner platform logins only). Writes dropbox RW.
+#   - Different networks => reach cannot reach hermes (or its secrets) over the network.
+#   - /opt/hermes is NEVER mounted into reach => reach cannot read hermes secrets on disk.
+#   - Everything reach drops is treated as UNTRUSTED_EVIDENCE downstream.
+
+name: hermes-research
+
+services:
+  hermes:
+    image: nousresearch/hermes-agent:v2026.7.7   # pinned stable (never :latest — it rebuilds hourly)
+    container_name: hermes
+    restart: unless-stopped
+    # resource ceiling — box is 3.7GB; leave headroom for reach Chromium + OS
+    mem_limit: 2g
+    cpus: 1.5
+    env_file:
+      - /opt/hermes/secrets/hermes.env        # OPENROUTER_*, DATABASE_URL, COMPOSIO_*, TELEGRAM_*
+    environment:
+      # hardening (see Hermes SECURITY.md): container IS the boundary; still belt-and-suspenders
+      HERMES_WRITE_SAFE_ROOT: /opt/hermes
+      HERMES_APPROVAL_MODE: smart              # never 'off'
+      GATEWAY_ALLOW_ALL_USERS: "false"         # default-deny; owner id set in hermes.env allowlist
+      HERMES_DASHBOARD_BIND: 127.0.0.1         # loopback only, never public
+    volumes:
+      - /opt/hermes/config:/app/config
+      - /opt/hermes/skills:/app/skills
+      - /opt/hermes/evidence:/app/evidence
+      - /opt/hermes/logs:/app/logs
+      - dropbox:/app/dropbox                    # shared with reach (walled scraping)
+      - review:/app/review                      # shared with reviewer (Codex/Claude verdicts)
+    networks: [hermesnet]
+    ports:
+      - "127.0.0.1:8501:8501"                  # dashboard, loopback-bound on host too
+
+  reach:
+    build:
+      context: ../reach                        # reach/Dockerfile — pinned agent-reach
+    container_name: reach
+    restart: unless-stopped
+    mem_limit: 1200m                            # Chromium is the hog; capped hard
+    cpus: 1
+    env_file:
+      - /opt/reach/secrets/burners.env          # BURNER platform logins ONLY. No real secrets. Ever.
+    # NOTE: deliberately NO mount of /opt/hermes here. reach cannot see a single real credential.
+    volumes:
+      - /opt/reach/app:/app/state
+      - /opt/reach/logs:/app/logs
+      - dropbox:/app/dropbox                    # shared coordination volume (reach's only channel out)
+    networks: [reachnet]
+    # egress control note: reachnet is a normal bridge (needs internet to read platforms).
+    # If tighter egress is wanted later, front it with a domain-allowlist proxy — not day 1.
+
+  reviewer:
+    build:
+      context: ../reviewer                     # reviewer/Dockerfile — Claude + Codex CLIs
+    container_name: reviewer
+    restart: unless-stopped
+    mem_limit: 800m                             # idles near-zero; only spikes during a review phase
+    cpus: 1
+    # NO env_file — reviewer holds NO Neon/OpenRouter/platform secret. Its only creds are the
+    # owner's Claude/Codex CLI logins, seeded once via device-auth into reviewer_home below.
+    volumes:
+      - reviewer_home:/home/reviewer            # persists ~/.claude + ~/.codex auth across restarts
+      - review:/app/review                      # its only channel to hermes (packets in, verdicts out)
+    networks: [reviewnet]
+
+networks:
+  hermesnet:
+    driver: bridge
+  reachnet:
+    driver: bridge
+  reviewnet:
+    driver: bridge
+  # No shared network across containers. Cross-container channels are the named volumes only.
+
+volumes:
+  dropbox:
+    # Shared coordination volume — the single channel between hermes and reach.
+    # It is safe for this to be read-write from both sides because the load-bearing controls
+    # are elsewhere: (1) reach holds NO real secret, so it has nothing to leak here; (2) reach's
+    # output is tagged UNTRUSTED_EVIDENCE and injection-quarantined on ingest; (3) the two
+    # containers share no network, so this volume is their only contact surface. Nothing secret
+    # or private is ever written here — only public, already-untrusted scraped text + request stubs.
+    # Layout: /app/dropbox/req (hermes writes scrape requests) and /app/dropbox/out (reach writes results).
+  review:
+    # Single channel between hermes and reviewer. Same safety logic as dropbox: reviewer holds no
+    # Neon/OpenRouter/platform secret, packets carry only claim+evidence text (already sanitized),
+    # containers share no network. Layout: review/req (hermes drops packets) / review/out (verdicts).
+  reviewer_home:
+    # Persists the reviewer's ~/.claude + ~/.codex device-auth so the owner logs in once, not per restart.
