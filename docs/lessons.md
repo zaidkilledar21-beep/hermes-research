@@ -358,3 +358,26 @@ the raw question).
 **Takeaway:** both times the fail-soft path worked perfectly and reported `truncated` honestly, which
 is the only reason this was diagnosable at all rather than looking like a model that "just doesn't
 decompose well."
+
+## 32. Scrubbing a repo for publication turns config into documentation
+Publishing meant replacing the real domain with `example.com` across the repo. Two days later a
+routine sync of `web/app.py` to the box (for an unrelated fix) carried that placeholder onto
+production, and the Chat panel rendered `chat.example.com's server IP address could not be found`.
+The Hermes chat host was a hardcoded literal in an iframe `src`, so the scrubbed value was not a
+comment, it was the live config.
+
+The tell was there and I dismissed it. Diffing local against deployed before the sync, I saw the
+domain line differ, read the two lines of context (both comments), and concluded "expected: the VPS
+correctly runs the real domain while the repo has placeholders." The conclusion was right about WHY
+they differed and wrong about what else differed the same way. A diff hunk's context is not its
+extent.
+
+**Fix:** the host reads from `HERMES_CHAT_URL`; unset, the panel says so rather than framing a dead
+host. A public default is now inert instead of wrong.
+**Rules:**
+- Anything scrubbed for publication is a candidate for silently overwriting deployment config. After
+  scrubbing, grep the placeholder across the tree and check each hit is genuinely prose, not a value.
+- Environment-specific values belong in the environment. If a literal has to differ between the
+  public repo and the deployment, that is the signal it was never a literal.
+- When a pre-sync diff shows an expected difference, read the WHOLE file's hits for that token, not
+  just the hunk that surfaced.

@@ -352,17 +352,32 @@ def api_synthesis(synthesis_id: int, _: bool = Depends(auth)):
 
 
 # ── CHAT / SERVICES / COST (scaffold — fleshed out next phase) ────────────────
+# The Hermes chat host is CONFIG, not a literal. It was hardcoded, which meant the public repo's
+# scrubbed placeholder (chat.example.com) overwrote the real host the moment web/app.py was synced
+# to the box, and the Chat panel rendered a DNS error. Reading it from the environment means the
+# public default is inert and the deployment supplies the real value via .env, so a sync can never
+# again replace working config with documentation.
+HERMES_CHAT_URL = os.environ.get("HERMES_CHAT_URL", "").rstrip("/")
+
+
 @app.get("/chat", response_class=HTMLResponse)
 def chat(_: bool = Depends(auth)) -> str:
-    body = ("""
+    if not HERMES_CHAT_URL:
+        return shell("chat", "Chat", (
+            '<div class=card><p class=sub>No chat host configured. Set '
+            '<code>HERMES_CHAT_URL</code> in <code>.env</code> (e.g. '
+            '<code>https://chat.your-domain.com</code>) and restart the app.</p></div>'),
+            kill=True)
+    url = html.escape(HERMES_CHAT_URL, quote=True)
+    body = (f"""
     <div class=card style="padding:0;overflow:hidden;height:calc(100vh - 160px);min-height:480px">
-      <iframe src="https://chat.example.com" title="Hermes"
+      <iframe src="{url}" title="Hermes"
         style="width:100%;height:100%;border:0;display:block;background:var(--surface)"
         onerror="this.style.display='none';document.getElementById('chat-fallback').style.display='block'"></iframe>
     </div>
     <div id=chat-fallback class=card style="display:none;margin-top:1rem">
       <p class=sub>Couldn't embed Hermes here (it may block framing).</p>
-      <a class="btn pri" href="https://chat.example.com" target=_blank>Open Hermes in a new tab ↗</a>
+      <a class="btn pri" href="{url}" target=_blank>Open Hermes in a new tab ↗</a>
     </div>""")
     return shell("chat", "Chat", body, kill=True)
 
