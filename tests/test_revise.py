@@ -136,8 +136,9 @@ class ReviseRunGuardTests(unittest.TestCase):
         self.assertEqual(counts["rejected"], 0)
 
     def test_budget_cap_short_circuits_before_model(self):
-        common_stub = types.SimpleNamespace(budget_spent=lambda run_id: 99.0,
-                                            log_agent_run=lambda *a, **k: None)
+        common_stub = types.SimpleNamespace(
+            over_budget=lambda run_id, **kw: (True, "run cap $2.00 reached (this run: $99.0000)"),
+            log_agent_run=lambda *a, **k: None)
         with mock.patch.object(revise, "MAX_ROUNDS", 1), \
              mock.patch.object(revise, "load_rejected", return_value=REJECTED), \
              mock.patch.dict(sys.modules, {"collectors": types.SimpleNamespace(common=common_stub),

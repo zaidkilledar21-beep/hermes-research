@@ -179,7 +179,7 @@ def plan_sub_question(question: str, sub_text: str, sources: list[str]) -> tuple
     and cost logging. Returns (plan_or_None, telemetry): telemetry has state, model, raw,
     tokens_in, tokens_out, cost."""
     messages = build_messages(question, sub_text, sources)
-    telemetry = {"state": "fallback_transport_failed", "model": PLANNER_MODEL, "raw": "",
+    telemetry = {"state": "degraded_ok_transport_fallback", "model": PLANNER_MODEL, "raw": "",
                  "tokens_in": 0, "tokens_out": 0, "cost": 0.0}
     first_errors: list[str] = []
     for attempt in (1, 2):
@@ -209,7 +209,7 @@ def plan_sub_question(question: str, sub_text: str, sources: list[str]) -> tuple
                 first_errors.append(f"{type(exc).__name__}: {exc}")
                 time.sleep(TRANSPORT_RETRY_SECONDS)
                 continue
-            telemetry["state"] = "fallback_transport_failed"
+            telemetry["state"] = "degraded_ok_transport_fallback"
             telemetry["errors"] = first_errors + [f"{type(exc).__name__}: {exc}"]
             return None, telemetry
 

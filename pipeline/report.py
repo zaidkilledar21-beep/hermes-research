@@ -6,8 +6,19 @@ Every finding is rendered with its honesty label and resolvable evidence citatio
 from __future__ import annotations
 import os
 import pathlib
+import sys
 import requests
 import psycopg
+
+
+def _evidence_dir() -> pathlib.Path:
+    """Where the local report copy lands. EVIDENCE_DIR wins; otherwise a path relative to the repo
+    root, which is correct both on the host (~/hermes-build/evidence) and inside a container image
+    that checks the repo out. Never the bare container mount point — see deliver()."""
+    env = os.environ.get("EVIDENCE_DIR")
+    if env:
+        return pathlib.Path(env)
+    return pathlib.Path(__file__).resolve().parent.parent / "evidence"
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 LABEL_ICON = {"observed": "[OBSERVED]", "inferred": "[INFERRED]", "unknown": "[GAP]",
@@ -150,13 +161,21 @@ def deliver(run_id: int, markdown: str | None = None, blocked: list[str] | None 
                           json={"chat_id": chat, "text": markdown[i:i+3800],
                                 "parse_mode": "Markdown", "disable_web_page_preview": True},
                           timeout=20)
-    else:
-        # report_md in the DB (above) is the real delivery; the file copy is best-effort and
-        # must never crash the run if the dir isn't writable (e.g. running outside the container).
-        try:
-            out = pathlib.Path(os.environ.get("EVIDENCE_DIR", "/app/evidence")) / f"report-{run_id}.md"
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(markdown, encoding="utf-8")
-            print(f"[deliver] wrote {out}")
-        except OSError as e:
-            print(f"[deliver] report saved to DB; file copy skipped ({type(e).__name__})")
+    # report_md in the DB (above) is the real delivery; the file copy is best-effort and must never
+    # crash the run if the dir isn't writable.
+    #
+    # Two defects fixed here. It used to sit in an `else:` branch, so configuring Telegram silently
+    # turned OFF the local copy — two unrelated delivery channels wired as alternatives. And the
+    # default was "/app/evidence", the path the reviewer CONTAINER mounts, while pipeline.run
+    # executes on the HOST out of ~/hermes-build. Every run therefore logged
+    # "file copy skipped (PermissionError)" and no report ever reached disk. Same class as
+    # lessons #32: a value that is correct in one deployment context is not configuration for all
+    # of them. Defaulting relative to the repo root works in both, and EVIDENCE_DIR still wins.
+    try:
+        out = _evidence_dir() / f"report-{run_id}.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(markdown, encoding="utf-8")
+        print(f"[deliver] wrote {out}")
+    except OSError as e:
+        print(f"[deliver] report saved to DB; file copy skipped ({type(e).__name__}: {e})",
+              file=sys.stderr)

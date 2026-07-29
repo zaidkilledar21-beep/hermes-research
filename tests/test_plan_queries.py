@@ -192,7 +192,7 @@ class PlanSubQuestionTests(unittest.TestCase):
              mock.patch.object(plan_queries.time, "sleep"):
             plan, tele = plan_queries.plan_sub_question("Q", "SQ", ["web_search"])
         self.assertIsNone(plan)
-        self.assertEqual(tele["state"], "fallback_transport_failed")
+        self.assertEqual(tele["state"], "degraded_ok_transport_fallback")
         self.assertEqual(post.call_count, 2)
 
     def test_schema_failure_gets_repair_retry_then_falls_back(self):

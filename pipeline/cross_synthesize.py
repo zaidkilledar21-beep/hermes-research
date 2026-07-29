@@ -18,6 +18,14 @@ import time
 import pathlib
 import psycopg
 
+# This module is an ENTRY POINT (`python -m pipeline.cross_synthesize --synthesis N`), so it must
+# load the deployment's .env like pipeline/run.py does. It read os.environ["DATABASE_URL"] directly
+# and only ever worked because web/app.py spawns it with env=dict(os.environ), inheriting uvicorn's
+# environment — run it by hand from a shell and it died on KeyError before doing anything. Same
+# family as lessons #30: a process's environment is whatever it was handed at exec time.
+from pipeline import envfile  # noqa: E402
+envfile.load()
+
 DATABASE_URL = os.environ["DATABASE_URL"]
 # Same shared review dropbox reviewers.py uses (container mounts it at /app/review).
 REVIEW = pathlib.Path(os.environ.get("REVIEW_DIR", "/opt/review"))
@@ -25,6 +33,13 @@ REQ = REVIEW / "req"
 OUT = REVIEW / "out"
 POLL_SECONDS = 10
 MAX_WAIT = int(os.environ.get("SYNTH_MAX_WAIT", "600"))  # the 3-call chain is slow; allow ~10 min
+
+
+def _atomic_write(path: pathlib.Path, text: str) -> None:
+    """Write via a same-directory temp file then rename — a poller never sees a partial file."""
+    tmp = path.with_name(f".{path.name}.partial")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _set_status(sid: int, status: str) -> None:
@@ -90,9 +105,13 @@ def synthesize(synthesis_id: int) -> int:
 
     REQ.mkdir(parents=True, exist_ok=True); OUT.mkdir(parents=True, exist_ok=True)
     name = f"synth-{synthesis_id}.json"
-    (REQ / name).write_text(json.dumps(
+    # Atomic: write a dotfile alongside, then rename. The reviewer polls this directory every 5
+    # seconds, and a plain write_text() of a 265KB packet gave it a wide window to read a
+    # half-written file, fail to parse it, and delete it — which is exactly what happened to
+    # synthesis 8. rename(2) within one filesystem is atomic, so the peer sees nothing or everything.
+    _atomic_write(REQ / name, json.dumps(
         {"kind": "cross_synthesis", "synthesis_id": synthesis_id, "title": title,
-         "findings": packet}), encoding="utf-8")
+         "findings": packet}))
 
     waited = 0
     while waited < MAX_WAIT:

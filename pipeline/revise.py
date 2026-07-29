@@ -248,8 +248,9 @@ def revise_run(run_id: int, question: str) -> dict:
     counts["rejected"] = len(rejected)
     if not rejected:
         return counts
-    if common.budget_spent(run_id) >= CAP:
-        print(f"[revise] budget cap ${CAP} reached — skipping revision", file=sys.stderr)
+    blocked, why = common.over_budget(run_id)
+    if blocked:
+        print(f"[revise] {why} — skipping revision", file=sys.stderr)
         return counts
 
     raw, usage = _call_model(rejected, question)

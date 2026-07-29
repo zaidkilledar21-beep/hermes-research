@@ -11,6 +11,8 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import threading
+import time
 import unicodedata
 import psycopg
 from datetime import datetime, timezone
@@ -138,9 +140,68 @@ def log_agent_run(run_id: int, profile: str, model: str, tokens_in: int, tokens_
         )
 
 
-def budget_spent(run_id: int) -> float:
+# --- Budget accounting -------------------------------------------------------------------------
+#
+# There used to be ONE function here, `budget_spent(run_id)`, summing `WHERE run_id=%s`. Eight call
+# sites compared it against a variable named OPENROUTER_**DAILY**_CAP_USD. So a cap everyone read as
+# "the most this engine spends in a day" was in fact enforced per run: 14 concurrent runs meant a $28
+# ceiling, and every one of those processes was correctly under its own budget while the day's total
+# was 14x what the operator had configured. The bug was invisible for as long as runs were serial,
+# because with one run at a time the two numbers are the same number.
+#
+# The name was the defect. `budget_spent` is deliberately GONE rather than kept as an alias: every
+# call site now has to say which budget it means, and cannot be ambiguous by accident again.
+
+RUN_CAP_USD = float(os.environ.get("OPENROUTER_RUN_CAP_USD", "2"))
+DAILY_CAP_USD = float(os.environ.get("OPENROUTER_DAILY_CAP_USD", "2"))
+
+# Extraction fans out to MAX_WORKERS threads and consults the budget on every paid call, so an
+# uncached cross-run query would mean hundreds of round trips per run. Cost accrues in dollars per
+# minute, never per call, so a few seconds of staleness cannot change the verdict at a boundary this
+# coarse — but it collapses the query count by two orders of magnitude.
+_SPENT_TODAY_TTL = float(os.environ.get("BUDGET_CACHE_TTL_SECONDS", "30"))
+_spent_today_cache: tuple[float, float] | None = None   # (monotonic_fetched_at, dollars)
+_spent_today_lock = threading.Lock()
+
+
+def spent_for_run(run_id: int) -> float:
+    """Dollars logged against ONE run. Never cached — it is queried at stage boundaries, not per call."""
     with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
         row = conn.execute(
             "SELECT COALESCE(SUM(cost_usd),0) FROM agent_runs WHERE run_id=%s", (run_id,)
         ).fetchone()
         return float(row[0]) if row else 0.0
+
+
+def spent_today(*, fresh: bool = False) -> float:
+    """Dollars logged across EVERY run since local midnight. Cached for _SPENT_TODAY_TTL seconds;
+    pass fresh=True at decision points that must not act on a stale number."""
+    global _spent_today_cache
+    now = time.monotonic()
+    if not fresh:
+        cached = _spent_today_cache
+        if cached is not None and (now - cached[0]) < _SPENT_TODAY_TTL:
+            return cached[1]
+    with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(cost_usd),0) FROM agent_runs WHERE created_at >= current_date"
+        ).fetchone()
+        value = float(row[0]) if row else 0.0
+    with _spent_today_lock:
+        _spent_today_cache = (time.monotonic(), value)
+    return value
+
+
+def over_budget(run_id: int, *, fresh: bool = False) -> tuple[bool, str]:
+    """True when EITHER this run's own spend or the day's total across all runs has hit its cap.
+
+    Returns (blocked, reason) so callers can log WHICH ceiling stopped them — the per-run and the
+    daily limits fail for completely different reasons and the operator needs to tell them apart.
+    """
+    run_spend = spent_for_run(run_id)
+    if run_spend >= RUN_CAP_USD:
+        return True, f"run cap ${RUN_CAP_USD:.2f} reached (this run: ${run_spend:.4f})"
+    day_spend = spent_today(fresh=fresh)
+    if day_spend >= DAILY_CAP_USD:
+        return True, f"daily cap ${DAILY_CAP_USD:.2f} reached (today, all runs: ${day_spend:.4f})"
+    return False, ""

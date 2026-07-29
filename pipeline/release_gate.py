@@ -14,6 +14,7 @@ import psycopg
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 DAILY_CAP_USD = float(os.environ.get("OPENROUTER_DAILY_CAP_USD", "2"))
+RUN_CAP_USD = float(os.environ.get("OPENROUTER_RUN_CAP_USD", "2"))
 
 
 def _normalize(text: str) -> str:
@@ -131,9 +132,19 @@ def check(run_id: int) -> list[str]:
         spent = conn.execute(
             "SELECT COALESCE(SUM(cost_usd),0) FROM agent_runs WHERE run_id=%s", (run_id,)
         ).fetchone()[0]
-        if float(spent) > DAILY_CAP_USD:
-            warning = f"WARN: run cost ${float(spent):.4f} exceeds cap ${DAILY_CAP_USD:.2f}"
-            print(warning, file=sys.stderr)
+        # `spent` is this ONE run's cost, so it belongs against the per-run ceiling. It used to be
+        # compared to DAILY_CAP_USD — the same conflation that made the daily cap a per-run cap
+        # everywhere else. The day's total is reported separately because the two overrun for
+        # different reasons: one run being expensive, versus many runs being cheap at once.
+        if float(spent) > RUN_CAP_USD:
+            print(f"WARN: run cost ${float(spent):.4f} exceeds run cap ${RUN_CAP_USD:.2f}",
+                  file=sys.stderr)
+        day_total = conn.execute(
+            "SELECT COALESCE(SUM(cost_usd),0) FROM agent_runs WHERE created_at >= current_date"
+        ).fetchone()[0]
+        if float(day_total) > DAILY_CAP_USD:
+            print(f"WARN: today's total across all runs ${float(day_total):.4f} exceeds daily cap "
+                  f"${DAILY_CAP_USD:.2f}", file=sys.stderr)
 
     return problems
 

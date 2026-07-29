@@ -325,8 +325,9 @@ def synthesize(run_id: int, question: str) -> int:
     import psycopg
     from collectors import common
 
-    if common.budget_spent(run_id) >= CAP:
-        raise RuntimeError(f"budget cap ${CAP} already reached for run {run_id}")
+    blocked, why = common.over_budget(run_id)
+    if blocked:
+        raise RuntimeError(f"{why} — refusing to synthesize run {run_id}")
 
     evidence = load_evidence(run_id)
     if not evidence:

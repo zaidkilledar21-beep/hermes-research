@@ -381,3 +381,80 @@ host. A public default is now inert instead of wrong.
   public repo and the deployment, that is the signal it was never a literal.
 - When a pre-sync diff shows an expected difference, read the WHOLE file's hits for that token, not
   just the hunk that surfaced.
+
+## 33. A diagnostic signal is not a diagnosis
+On 2026-07-28 an operator agent watching the engine's stderr concluded "the research engine is in a
+sustained upstream outage" and wrote a supervisor that re-fired runs up to six times each. The
+engine was healthy. Runs were delivering the entire time — seven landed unattended during the
+investigation, and the run it declared dead had ingested 453 items and was mid-extraction.
+
+It read three signals, all of which the pipeline emits deliberately and honestly, as one fatal event:
+- `engines unresponsive: brave, duckduckgo, startpage` — lesson #22's throttling. SearXNG still
+  returned 80 candidates per query, and the run logged *"Coverage is INCOMPLETE, not absent."*
+- `fallback_transport_failed` from decompose — lesson #26's fail-soft trace. The run CONTINUES.
+- a free-tier daily 429 with an automatic switch to the paid model — lesson #28, verbatim.
+
+Every one of those messages was accurate. The failure was that a label containing the word "failed"
+described a path that had SUCCEEDED by design, and nothing in the system distinguished "degraded and
+fine" from "dead" in a form a machine could read. The agent then re-asked a question that had already
+delivered 18 findings, four times, because nothing refused a duplicate.
+
+**Fixes:** `fallback_transport_failed` → `degraded_ok_transport_fallback` (genuinely fatal states,
+like synthesize's `transport_failed`, keep fatal names). New `GET /api/run/<id>/health` returning
+`progressing` / `degradations[]` / `fatal` so an agent never has to interpret prose.
+**Takeaway:** if a fail-soft path's telemetry reads as an error, it will eventually be treated as
+one. Naming is an interface. Prose written for a human tail-ing a log is not a machine contract, and
+the moment an autonomous operator is watching, it needs one.
+
+## 34. A read-then-act check is not a guard under concurrency
+`budget_spent(run_id)` summed `WHERE run_id=%s` and eight call sites compared it against a variable
+named `OPENROUTER_DAILY_CAP_USD`. So the "daily" cap was enforced per run: fourteen concurrent runs
+meant a $28 ceiling, with every process correctly under its own budget. Invisible for months because
+runs had always been serial — with one run at a time the two numbers are identical.
+
+Worse, the pattern was `SELECT` → compare in Python → act. Under exactly the concurrency the cap
+exists to control, every worker reads "under budget" and every worker proceeds. Splitting the
+function into `spent_for_run()` and `spent_today()` fixes the VALUE and not the RACE.
+
+Two further traps found while fixing it:
+- Session advisory locks are not an option here. Neon's pooled endpoint is PgBouncer in transaction
+  mode, so a session-level lock is not pinned to a backend across transactions. It tests green in a
+  single session, which is what makes it dangerous. Same family as lesson #26.
+- A single `INSERT … SELECT … WHERE (SELECT count(*) …) < n` is still not enough: under default
+  READ COMMITTED two transactions can share a snapshot, both satisfy the predicate, and both insert.
+  The gate runs at SERIALIZABLE with bounded retries.
+
+**Takeaway:** for a guard, ask "what happens if two of these run at the same instant?" before asking
+whether the number is right. And a guard whose own name is ambiguous (`budget_spent` — whose budget?)
+will be used ambiguously; the fix was deleting the name, not aliasing it.
+
+## 35. A non-atomic write into a polled directory is a race, and a silent `except` hides it
+The reviewer dropbox is a shared directory: the host writes `req/<name>.json`, the container polls
+every 5 seconds and writes `out/<name>.json` back. Both sides used plain `write_text()`. For the
+per-finding packets this pattern has carried for months — they are ~1KB, so the window between
+"file exists" and "file is complete" is too small to lose a coin flip in.
+
+The cross-synthesis packet is 265KB. The reviewer caught it half-written, `json.loads` raised, and
+this ran:
+
+```python
+except Exception:
+    req_path.unlink(missing_ok=True)   # silently DELETES the request
+    return
+```
+
+The request vanished, no result was ever written, no log line was emitted, and the host sat polling
+an `out/` file that could never appear until its own timeout expired. The visible symptom — a
+consolidation that "hung" — pointed at the model, the packet size, and the timeout, none of which
+were the cause. Two separate hours went into the wrong suspects.
+
+**Fixes:** every dropbox write on both sides now goes to a same-directory dotfile and `os.replace()`
+onto the target — `rename(2)` is atomic within a filesystem, so a poller sees nothing or everything.
+An unparseable request is renamed to `.unparseable` and logged loudly instead of deleted.
+**Takeaways:**
+- A file appearing in a watched directory is not a promise that it is finished. If a peer polls for
+  existence, the producer owes it atomicity.
+- Never `unlink()` in an `except` you cannot explain. The unreadable thing is the only evidence of
+  why it was unreadable; destroying it converts a five-minute diagnosis into a blind search.
+- Bugs whose probability scales with payload size lie dormant through every small test and fire the
+  first time the system does something ambitious.

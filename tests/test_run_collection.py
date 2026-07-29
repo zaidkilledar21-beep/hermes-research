@@ -324,19 +324,43 @@ class ExtractionFallbackTests(unittest.TestCase):
         self.assertFalse(self.extract._use_fallback())
         self.assertEqual(self.extract.EXTRACT_MODEL, "nvidia/nemotron-3-ultra-550b-a55b:free")
 
+    @staticmethod
+    def _budget(blocked: bool, why: str = ""):
+        """Stub collectors.common for the lazy import inside _latch_fallback."""
+        stub = types.SimpleNamespace(over_budget=lambda run_id, **kw: (blocked, why))
+        return mock.patch.dict(sys.modules,
+                               {"collectors": types.SimpleNamespace(common=stub),
+                                "collectors.common": stub})
+
     def test_daily_exhaustion_latches_the_paid_model(self):
-        self.assertTrue(self.extract._latch_fallback("free-models-per-day-high-balance"))
+        with self._budget(False):
+            self.assertTrue(self.extract._latch_fallback("free-models-per-day-high-balance", 1))
         self.assertTrue(self.extract._use_fallback())
 
     def test_latch_is_idempotent_and_sticky(self):
-        self.extract._latch_fallback("first")
-        self.extract._latch_fallback("second")
+        with self._budget(False):
+            self.extract._latch_fallback("first", 1)
+            self.extract._latch_fallback("second", 1)
         self.assertTrue(self.extract._use_fallback())
 
     def test_fallback_can_be_disabled(self):
         with mock.patch.object(self.extract, "FALLBACK_ENABLED", False):
-            self.assertFalse(self.extract._latch_fallback("per-day"))
+            self.assertFalse(self.extract._latch_fallback("per-day", 1))
             self.assertFalse(self.extract._use_fallback())
+
+    def test_over_budget_run_does_not_latch_the_paid_model(self):
+        """Regression for the defect that made 2026-07-28 cost real money.
+
+        The guard used to sit in extract_run() as `_fallback_active = False` — already the
+        default, so it disabled nothing — while _latch_fallback consulted only FALLBACK_ENABLED.
+        The first worker thread to see a free-tier 429 therefore switched the whole run onto the
+        paid model no matter what the cap said, which is the opposite of what its docstring
+        promised. Fourteen concurrent runs did exactly that.
+        """
+        with self._budget(True, "daily cap $2.00 reached (today, all runs: $2.4100)"):
+            self.assertFalse(
+                self.extract._latch_fallback("free-models-per-day-high-balance", 1))
+        self.assertFalse(self.extract._use_fallback())
 
     def test_fallback_slug_is_pinned_exactly(self):
         # The stack pins exact slugs, never aliases — an alias drifts to whatever is newest.

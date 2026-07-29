@@ -71,10 +71,29 @@ def _use_fallback() -> bool:
         return _fallback_active
 
 
-def _latch_fallback(reason: str) -> bool:
-    """Switch this process to the paid model. Returns False when no fallback is configured."""
+def _latch_fallback(reason: str, run_id: int) -> bool:
+    """Switch this process to the paid model, IF the budget still permits paid work.
+
+    The budget check lives here, inside the latch, because this is where the decision to start
+    spending is actually made. It used to live in extract_run() as a pre-flight that set
+    `_fallback_active = False` — which is the variable's default, so it disabled nothing. The
+    latch itself only ever consulted FALLBACK_ENABLED and FALLBACK_MODEL, so the first worker
+    thread to see a free-tier 429 flipped it and the run spent on the paid model no matter what
+    the cap said. The docstring promised "a degraded free tier can never quietly blow the daily
+    cap"; the code did the opposite, and that is how a day of free-tier exhaustion turned into
+    real money across fourteen concurrent runs.
+
+    Returns False when no fallback is configured OR when the budget forbids engaging it.
+    """
     global _fallback_active
     if not FALLBACK_ENABLED or not FALLBACK_MODEL:
+        return False
+    from collectors import common  # lazy: common requires DATABASE_URL at import time
+    blocked, why = common.over_budget(run_id)
+    if blocked:
+        print(f"[extract] free model exhausted ({reason}) but {why} — NOT engaging the paid "
+              f"fallback; remaining items stay unextracted and synthesis falls back to raw text",
+              file=sys.stderr)
         return False
     with _fallback_lock:
         if not _fallback_active:
@@ -184,7 +203,7 @@ def _retry_after(response, body: dict, attempt: int) -> float:
 
 
 def _extract_one(
-        evidence_id: int, raw: str, question: str, guidance: str = ""
+        evidence_id: int, raw: str, question: str, run_id: int, guidance: str = ""
 ) -> tuple[int, str | None, bool | None, str | None, str | None, str, dict]:
     """Call Nemotron for one item, retrying only request/HTTP failures.
 
@@ -203,6 +222,14 @@ def _extract_one(
     for attempt in range(MAX_ATTEMPTS):
         try:
             on_fallback = _use_fallback()
+            # Re-checked per paid call, not once per run. The guard used to be a single pre-flight
+            # before up to MAX_WORKERS futures were submitted, so a run that crossed its cap
+            # mid-extraction kept spending to the end of the queue.
+            if on_fallback:
+                from collectors import common  # lazy: needs DATABASE_URL at import time
+                blocked, why = common.over_budget(run_id)
+                if blocked:
+                    raise RuntimeError(f"paid extraction halted: {why}")
             model = FALLBACK_MODEL if on_fallback else EXTRACT_MODEL
             # Pacing exists to respect the FREE tier's per-minute quota. The paid model has no such
             # cap, and pacing it would just make a degraded run slower than a healthy one.
@@ -229,7 +256,7 @@ def _extract_one(
                 # attempts on a quota that resets at midnight. Per-minute limits still just wait.
                 daily = "per-day" in detail or "per-day-high-balance" in detail
                 if not on_fallback and (daily or attempt + 1 >= MAX_ATTEMPTS):
-                    if _latch_fallback(detail):
+                    if _latch_fallback(detail, run_id):
                         continue      # immediately retry this same item on the paid model
                 if attempt + 1 >= MAX_ATTEMPTS:
                     raise RuntimeError(f"rate limited: {detail}")
@@ -307,14 +334,15 @@ def _store_result(
 
 def extract_run(run_id: int) -> int:
     """Extract every not-yet-extracted evidence item for a run, concurrently. Returns count done."""
-    from collectors import common
-
-    # The free model is free; the paid fallback is not. Refuse to engage it at all if this run has
-    # already spent its budget, so a degraded free tier can never quietly blow the daily cap.
+    # The budget guard that used to live here was a no-op: it set `_fallback_active = False`, which
+    # is already the default, while `_latch_fallback` never consulted the budget at all. It now lives
+    # inside the latch and is re-checked on every paid call — see _latch_fallback's docstring.
+    #
+    # What remains here is a deliberate RESET. The latch is per-process and extract_run is called
+    # again for each follow-up round; without this, one free-tier 429 in round 1 would keep every
+    # later round on the paid model even after the quota reset.
     global _fallback_active
-    if FALLBACK_ENABLED and common.budget_spent(run_id) >= CAP:
-        print(f"[extract] budget cap ${CAP} reached — paid fallback disabled for run {run_id}",
-              file=sys.stderr)
+    with _fallback_lock:
         _fallback_active = False
 
     question, guidance = _load_question(run_id)
@@ -324,7 +352,7 @@ def extract_run(run_id: int) -> int:
     done = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
-            pool.submit(_extract_one, eid, content, question, guidance): eid
+            pool.submit(_extract_one, eid, content, question, run_id, guidance): eid
             for eid, content in pending
         }
         for fut in as_completed(futures):

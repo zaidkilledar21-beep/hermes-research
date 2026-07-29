@@ -26,7 +26,8 @@ envfile.load()
 import psycopg  # noqa: E402
 from collectors import legit, search  # noqa: E402
 from pipeline import (synthesize, release_gate, reach_bridge, report, reviewers, queries,  # noqa: E402
-                      extract, select, registry, plan_queries, revise, followup, figures, priors)
+                      extract, select, registry, plan_queries, revise, followup, figures, priors,
+                      admission)
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 LEGIT = {"x", "github", "youtube", "rss", "web", "hackernews", "web_search",
@@ -54,6 +55,9 @@ REACH_MAX_WAIT = int(os.environ.get("REACH_MAX_WAIT", "900"))
 def _set_status(run_id: int, status: str) -> None:
     with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
         conn.execute("UPDATE research_runs SET status=%s WHERE run_id=%s", (status, run_id))
+    # Every stage transition already funnels through here, so this is the one place a heartbeat
+    # covers all of them and cannot be forgotten when a new stage is added. Fail-soft inside.
+    admission.heartbeat(run_id)
 
 
 def _append_note(run_id: int, note: str) -> None:
@@ -233,7 +237,7 @@ def _collect_for_subs(run_id: int, question: str, subs: list[tuple], budget: _Bu
         if (sub_id is not None and plan_queries.PLANNER_ENABLED
                 and any(s in plan_queries.PLANNABLE_SOURCES for s in plan)):
             from collectors import common
-            if common.budget_spent(run_id) >= plan_queries.CAP:
+            if common.over_budget(run_id)[0]:
                 plan_queries.persist_plan(run_id, sub_id, "fallback_budget_cap", None, "",
                                           plan_queries.PLANNER_MODEL)
                 plan_states.append("fallback_budget_cap")
@@ -325,13 +329,35 @@ def _await_reach(run_id: int, reach_rids: list[str]) -> None:
               f"{REACH_MAX_WAIT}s: {sorted(outstanding)}", file=sys.stderr)
 
 
-def process(run_id: int) -> int:
+def process(run_id: int, *, force: bool = False) -> int:
+    """Admission wrapper. The pipeline proper is _process_admitted; this exists so the slot is
+    released on EVERY exit path, including a crash."""
     with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
         row = conn.execute(
             "SELECT question FROM research_runs WHERE run_id=%s", (run_id,)).fetchone()
-        if not row:
-            print(f"run {run_id} not found", file=sys.stderr); return 1
-        question = row[0]
+    if not row:
+        print(f"run {run_id} not found", file=sys.stderr)
+        return 1
+    question = row[0]
+
+    # ADMISSION. This is the chokepoint, and it has to be HERE rather than at the callers: runs are
+    # spawned from web/app.py twice AND by an operator agent invoking `python -m pipeline.run`
+    # straight from its shell. On 2026-07-28 the pile-up came in through that third path, so a
+    # guard living in the web app would have watched it happen. Everything converges on process().
+    admitted, reason = admission.admit(run_id, question, force=force)
+    if not admitted:
+        _append_note(run_id, f"admission: {reason}")
+        _set_status(run_id, "refused")
+        print(f"run {run_id} REFUSED by admission: {reason}", file=sys.stderr)
+        return 2
+    try:
+        return _process_admitted(run_id, question)
+    finally:
+        admission.release(run_id)
+
+
+def _process_admitted(run_id: int, question: str) -> int:
+    with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
         subs = conn.execute(
             "SELECT sub_id, text, source_plan FROM sub_questions WHERE run_id=%s",
             (run_id,)).fetchall()
@@ -479,8 +505,9 @@ def process(run_id: int) -> int:
                 if not gaps["unknowns"] and not gaps["contradictions"]:
                     break
                 from collectors import common
-                if common.budget_spent(run_id) >= followup.CAP:
-                    _append_note(run_id, f"followup round {rnd}: budget cap — skipped")
+                blocked, why = common.over_budget(run_id)
+                if blocked:
+                    _append_note(run_id, f"followup round {rnd}: {why} — skipped")
                     break
                 new_subs = followup.plan_round(run_id, question, gaps, rnd)
                 if not new_subs:
@@ -553,7 +580,12 @@ def process(run_id: int) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", type=int, required=True)
-    return process(ap.parse_args().run)
+    ap.add_argument("--force", action="store_true",
+                    help="waive the DUPLICATE-question check only. Concurrency and budget still "
+                         "apply — re-asking a thin question is a real workflow, exceeding the "
+                         "spend ceiling is a config change.")
+    a = ap.parse_args()
+    return process(a.run, force=a.force)
 
 
 if __name__ == "__main__":
