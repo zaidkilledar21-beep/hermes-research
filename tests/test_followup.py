@@ -86,6 +86,14 @@ class ParseSubqsTests(unittest.TestCase):
         self.assertEqual(len(out), 1)
 
 
+class SupersedeTests(unittest.TestCase):
+    def test_empty_id_list_supersedes_nothing(self):
+        """The psycopg stub raises on connect, so reaching the database at all fails this test —
+        which is the point: with no ids there is nothing to supersede, and a round whose
+        re-synthesis stored no findings must leave the previous set accepted."""
+        self.assertEqual(followup.supersede_findings(1, 1, []), 0)
+
+
 class ClosureTests(unittest.TestCase):
     def test_all_closed(self):
         self.assertEqual(followup.closure(4, 0), 1.0)
