@@ -101,7 +101,13 @@ def run_reviews(run_id: int, wait: int | None = None,
         return 0
     for p in packets:
         p["run_id"] = run_id
-        (REQ / f"{run_id}-{p['finding_id']}.json").write_text(json.dumps(p), encoding="utf-8")
+        # Atomic (same reason as cross_synthesize): the reviewer polls every 5s and silently
+        # discarded anything it could not parse. These packets are small enough that the race
+        # was never observed, but the writer should not depend on staying small.
+        _dest = REQ / f"{run_id}-{p['finding_id']}.json"
+        _tmp = _dest.with_name(f".{_dest.name}.partial")
+        _tmp.write_text(json.dumps(p), encoding="utf-8")
+        os.replace(_tmp, _dest)
 
     budget = wait if wait is not None else min(REVIEW_MAX_WAIT,
                                                60 + len(packets) * PER_PACKET_SECONDS)

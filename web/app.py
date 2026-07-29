@@ -311,6 +311,73 @@ def api_run(run_id: int, _: bool = Depends(auth)):
             "done": status in ("delivered", "gated"), "report_md": report_md, "notes": notes}
 
 
+@app.get("/api/run/{run_id}/health")
+def api_run_health(run_id: int, _: bool = Depends(auth)):
+    """Structured run health, so an operator agent never has to interpret stderr.
+
+    WHY THIS EXISTS: on 2026-07-28 an agent watching log output saw `fallback_transport_failed`
+    (a fail-soft trace meaning the run degraded successfully), `engines unresponsive: brave,
+    duckduckgo` (known throttling, partial coverage) and a free-tier 429 (auto-switch to the paid
+    model). All three were survivable and logged honestly. It concluded the engine was in a
+    sustained outage, and re-fired four runs of a question that had already delivered 18 findings.
+
+    Prose written for humans is not a machine interface. This is: `progressing` answers "is this
+    run alive", `degradations` lists what has degraded WITHOUT implying death, and `fatal` is the
+    only field that ever means stop. An agent polling this cannot make that mistake.
+    """
+    with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
+        row = conn.execute(
+            "SELECT status, notes, synthesis_state, submitted_at, delivered_at "
+            "FROM research_runs WHERE run_id=%s", (run_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="run not found")
+        status, notes, synth_state, submitted_at, delivered_at = row
+        findings = conn.execute(
+            "SELECT count(*) FROM findings WHERE run_id=%s AND disposition='accepted'",
+            (run_id,)).fetchone()[0]
+        evidence = conn.execute(
+            "SELECT count(*), count(extracted) FROM evidence_items WHERE run_id=%s",
+            (run_id,)).fetchone()
+        spend = conn.execute(
+            "SELECT COALESCE(SUM(cost_usd),0) FROM agent_runs WHERE run_id=%s", (run_id,)
+        ).fetchone()[0]
+
+    note_text = notes or ""
+    # Degraded-but-fine. Each of these means "less coverage than ideal", never "stop".
+    degradations = [k for k in ("degraded_ok_transport_fallback", "fallback_budget_cap",
+                                "fallback_disabled", "THROTTLED", "unresponsive",
+                                "free model exhausted", "refused_duplicate", "deadline")
+                    if k in note_text]
+    # The only genuinely terminal states: synthesis produced nothing usable, or the gate held it.
+    fatal = synth_state == "transport_failed" or status == "failed"
+    # 'refused' is terminal but NOT fatal and NOT an error: the admission gate declined the run
+    # before any work happened. An agent seeing it should read `notes` for which ceiling it hit,
+    # not retry — retrying is precisely what it is there to stop.
+    terminal_states = ("delivered", "gated", "failed", "killed", "refused")
+
+    return {
+        "run_id": run_id,
+        "status": status,
+        "phase": status,
+        "terminal": status in terminal_states,
+        "progressing": status not in terminal_states and not fatal,
+        "fatal": fatal,
+        "degradations": degradations,
+        "degraded": bool(degradations),
+        "accepted_findings": findings,
+        "evidence_items": evidence[0],
+        "evidence_extracted": evidence[1],
+        "cost_usd": float(spend),
+        "submitted_at": submitted_at.isoformat() if submitted_at else None,
+        "delivered_at": delivered_at.isoformat() if delivered_at else None,
+        "notes": note_text,
+        "advice": ("degraded but progressing — do NOT restart; coverage is reduced, not absent"
+                   if degradations and not fatal else
+                   "synthesis failed for this run" if fatal else
+                   "healthy"),
+    }
+
+
 # ── Cross-run synthesis (Claude-draft -> Codex-critique -> Claude-revise via reviewer container) ──
 @app.get("/api/runs")
 def api_runs(limit: int = 30, _: bool = Depends(auth)):

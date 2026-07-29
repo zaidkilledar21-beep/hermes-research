@@ -13,8 +13,10 @@ continues (reviewers are optional per ADR-005 — they inform, they never gate).
 """
 from __future__ import annotations
 import json
+import os
 import pathlib
 import subprocess
+import sys
 import time
 
 REVIEW = pathlib.Path("/app/review")
@@ -85,13 +87,45 @@ CLAUDE_CMD = ["claude", "-p", "--model", CLAUDE_MODEL, "--allowed-tools", "", "-
 CODEX_CMD = ["codex", "exec", "-m", CODEX_MODEL, "--sandbox", "read-only", "--skip-git-repo-check"]
 
 
-def _run_text(cmd: list[str], prompt: str, timeout: int = 300) -> str:
-    """Run a CLI one-shot with the prompt on STDIN; return raw stdout (stripped), '' on failure."""
+# The cross-synthesis chain reads a packet of every accepted finding across dozens of runs, so its
+# wall-clock scales with the packet, not with a fixed idea of "a CLI call". Measured 2026-07-28: a
+# 36-run, 267k-char draft took 417s against this function's old hard-coded 300s default. It was
+# killed mid-generation, returned "", and surfaced to the operator as "draft (claude) failed" —
+# a TIMEOUT reported as a FAILURE, with the CLI's own stderr thrown away. Same family as lessons
+# #33: a truthful-looking error message that names the wrong cause sends everyone hunting the
+# wrong bug.
+TEXT_TIMEOUT_BASE = int(os.environ.get("REVIEW_TEXT_TIMEOUT", "900"))
+# ...and scale it with the prompt, so a bigger consolidation gets proportionally more room instead
+# of silently hitting the same wall at a larger size.
+TEXT_TIMEOUT_PER_100K = int(os.environ.get("REVIEW_TEXT_TIMEOUT_PER_100K", "240"))
+
+
+def _run_text(cmd: list[str], prompt: str, timeout: int | None = None) -> str:
+    """Run a CLI one-shot with the prompt on STDIN; return raw stdout (stripped), '' on failure.
+
+    A failure is never silent: the caller only sees '', so the REASON is printed here or it is lost.
+    """
+    if timeout is None:
+        timeout = TEXT_TIMEOUT_BASE + (len(prompt) // 100_000) * TEXT_TIMEOUT_PER_100K
+    started = time.time()
     try:
         proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=timeout)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired:
+        print(f"[reviewer] {cmd[0]} TIMED OUT after {timeout}s on a {len(prompt)}-char prompt "
+              f"(raise REVIEW_TEXT_TIMEOUT)", file=sys.stderr, flush=True)
         return ""
-    return proc.stdout.strip() if proc.returncode == 0 else ""
+    except FileNotFoundError:
+        print(f"[reviewer] {cmd[0]} not installed in this container", file=sys.stderr, flush=True)
+        return ""
+    if proc.returncode != 0:
+        print(f"[reviewer] {cmd[0]} exited {proc.returncode} after {time.time()-started:.0f}s: "
+              f"{(proc.stderr or '').strip()[:500]}", file=sys.stderr, flush=True)
+        return ""
+    out = proc.stdout.strip()
+    if not out:
+        print(f"[reviewer] {cmd[0]} returned EMPTY stdout after {time.time()-started:.0f}s; "
+              f"stderr: {(proc.stderr or '').strip()[:300]}", file=sys.stderr, flush=True)
+    return out
 
 
 def _extract_json(text: str) -> dict:
@@ -183,27 +217,51 @@ def review_claude(packet: str) -> dict:
     return v
 
 
+def _atomic_write(path: pathlib.Path, text: str) -> None:
+    """Write via a temp file in the same directory, then rename.
+
+    rename(2) is atomic on the same filesystem, so a POLLER NEVER SEES A PARTIAL FILE. The dropbox
+    on both sides was plain write_text(), which is fine for the ~1KB per-finding packets and
+    catastrophic for a 265KB consolidation packet: the peer polls every 5s, caught the file
+    half-written, failed to parse it, and (below) deleted it. Size was the only reason this had
+    never fired before.
+    """
+    tmp = path.with_name(f".{path.name}.partial")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def handle(req_path: pathlib.Path) -> None:
     try:
         packet = req_path.read_text(encoding="utf-8")
         meta = json.loads(packet)
-    except Exception:
-        req_path.unlink(missing_ok=True)
+    except Exception as exc:
+        # NEVER silently delete. This branch destroyed a 265KB consolidation packet and left no
+        # trace anywhere: the request vanished, no result was written, and the host sat waiting
+        # until its timeout. Quarantine it instead so the next reader can see what arrived, and
+        # say so loudly. An unreadable request is evidence, not garbage.
+        try:
+            req_path.rename(req_path.with_suffix(".unparseable"))
+        except Exception:
+            req_path.unlink(missing_ok=True)
+        print(f"[reviewer] UNREADABLE request {req_path.name} "
+              f"({type(exc).__name__}: {exc}); quarantined as .unparseable",
+              file=sys.stderr, flush=True)
         return
     OUT.mkdir(parents=True, exist_ok=True)
     if meta.get("kind") == "cross_synthesis":
         # big two-model job (Claude draft -> Codex critique -> Claude revise). `findings` carries
         # the packet the host assembled; everything else about it is DATA, never instructions.
         result = cross_synthesize(json.dumps(meta.get("findings", meta)))
-        (OUT / req_path.name).write_text(
-            json.dumps({"kind": "cross_synthesis", "synthesis_id": meta.get("synthesis_id"),
-                        **result}), encoding="utf-8")
+        _atomic_write(OUT / req_path.name,
+                      json.dumps({"kind": "cross_synthesis",
+                                  "synthesis_id": meta.get("synthesis_id"), **result}))
         req_path.unlink(missing_ok=True)
         return
     reviews = [review_codex(packet), review_claude(packet)]
-    (OUT / req_path.name).write_text(
-        json.dumps({"finding_id": meta.get("finding_id"), "run_id": meta.get("run_id"),
-                    "reviews": reviews}), encoding="utf-8")
+    _atomic_write(OUT / req_path.name,
+                  json.dumps({"finding_id": meta.get("finding_id"),
+                              "run_id": meta.get("run_id"), "reviews": reviews}))
     req_path.unlink(missing_ok=True)
 
 

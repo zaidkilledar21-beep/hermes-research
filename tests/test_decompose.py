@@ -104,7 +104,8 @@ class DecomposeFailSoftTests(unittest.TestCase):
         self.assertEqual(tele["label"], "disabled")
 
     def test_budget_cap_returns_fallback_without_network(self):
-        common_stub = types.SimpleNamespace(budget_spent=lambda run_id: 99.0)
+        common_stub = types.SimpleNamespace(
+            over_budget=lambda run_id, **kw: (True, "run cap $2.00 reached (this run: $99.0000)"))
         with mock.patch.object(decompose, "ENABLED", True), \
              mock.patch.dict(sys.modules, {"collectors": types.SimpleNamespace(common=common_stub),
                                            "collectors.common": common_stub}), \
@@ -112,14 +113,17 @@ class DecomposeFailSoftTests(unittest.TestCase):
                                side_effect=AssertionError("must not call model")):
             subqs, tele = decompose.decompose("Some question?", run_id=1)
         self.assertEqual(subqs, [("Some question?", [])])
-        self.assertEqual(tele["label"], "fallback_budget_cap")
+        # Slug prefix is stable (the health endpoint substring-matches it); the parenthesised
+        # detail says WHICH ceiling stopped it, same convention as the transport label.
+        self.assertTrue(tele["label"].startswith("fallback_budget_cap"))
+        self.assertIn("run cap", tele["label"])
 
     def test_transport_failure_falls_back(self):
         with mock.patch.object(decompose, "ENABLED", True), \
              mock.patch.object(decompose, "_call_model", side_effect=RuntimeError("boom")):
             subqs, tele = decompose.decompose("Some question?")
         self.assertEqual(subqs, [("Some question?", [])])
-        self.assertTrue(tele["label"].startswith("fallback_transport_failed"))
+        self.assertTrue(tele["label"].startswith("degraded_ok_transport_fallback"))
 
     def test_successful_decomposition(self):
         usage = {"model": "tencent/hy3-20260706", "prompt_tokens": 100, "completion_tokens": 50,

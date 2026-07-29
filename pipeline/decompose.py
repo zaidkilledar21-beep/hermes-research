@@ -192,15 +192,23 @@ def decompose(question: str, run_id: int | None = None) -> tuple[list[tuple[str,
         return fallback, {"label": "disabled", "model": None}
     if run_id is not None:
         from collectors import common
-        if common.budget_spent(run_id) >= CAP:
-            return fallback, {"label": "fallback_budget_cap", "model": None}
+        blocked, why = common.over_budget(run_id)
+        if blocked:
+            return fallback, {"label": f"fallback_budget_cap ({why})", "model": None}
 
-    telemetry = {"label": "fallback_transport_failed", "model": DECOMPOSE_MODEL,
+    # NAMING IS LOAD-BEARING. This label was `fallback_transport_failed`, and on 2026-07-28 an
+    # operator agent watching stderr read it as the engine dying, declared a "sustained upstream
+    # outage", and re-fired four runs of a question that had already delivered 18 findings. The
+    # path had SUCCEEDED — it degraded to one sub-question exactly as designed. A label containing
+    # "failed" for a path that worked is a trap laid for every future reader, human or model.
+    # Genuinely fatal states keep fatal names (see synthesize.py's `transport_failed`, where the
+    # run really does end with nothing); this one says degraded, and says it is OK.
+    telemetry = {"label": "degraded_ok_transport_fallback", "model": DECOMPOSE_MODEL,
                 "tokens_in": 0, "tokens_out": 0, "cost": 0.0}
     try:
         raw, usage = _call_model(question)
     except Exception as exc:
-        telemetry["label"] = f"fallback_transport_failed ({type(exc).__name__})"
+        telemetry["label"] = f"degraded_ok_transport_fallback ({type(exc).__name__})"
         return fallback, telemetry
 
     telemetry["model"] = usage.get("model", DECOMPOSE_MODEL)

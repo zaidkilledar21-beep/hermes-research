@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS research_runs (
     question        TEXT        NOT NULL,
     status          TEXT        NOT NULL DEFAULT 'decomposing',
                     -- decomposing | collecting | extracting | synthesizing | reviewing | gated | delivered | failed | killed
+                    -- | refused  (admission gate declined it: concurrency, duplicate, or daily
+                    --             budget — see pipeline/admission.py. No work was done and no
+                    --             money was spent, which is why it is NOT 'failed'.)
     submitted_by    TEXT        NOT NULL,          -- telegram owner id
     submitted_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     delivered_at    TIMESTAMPTZ,
