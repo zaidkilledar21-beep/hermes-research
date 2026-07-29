@@ -205,16 +205,32 @@ def plan_round(run_id: int, question: str, gaps: dict, round_n: int) -> list[tup
     return rows
 
 
-def supersede_findings(run_id: int, round_n: int) -> int:
-    """Before re-synthesis: the previous finding set becomes lineage. Same disposition convention
-    as Part E — every consumer of accepted findings already treats it as invisible."""
+def current_finding_ids(run_id: int) -> list[int]:
+    """The finding set as it stands BEFORE a round's re-synthesis runs."""
     import psycopg
+    with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
+        return [r[0] for r in conn.execute(
+            "SELECT finding_id FROM findings WHERE run_id=%s "
+            "AND COALESCE(disposition,'') <> 'superseded_by_revision' "
+            "ORDER BY finding_id", (run_id,)).fetchall()]
+
+
+def supersede_findings(run_id: int, round_n: int, finding_ids: list[int]) -> int:
+    """AFTER a re-synthesis produced replacements: the findings it replaces become lineage.
+
+    Called with the ids captured before synthesis, and only once synthesis actually stored
+    findings. Superseding first meant a synthesis that then truncated left the run with an
+    entirely superseded set and nothing to ship — run 79 gated with 0 accepted findings while
+    its five round-0 findings sat intact but invisible."""
+    import psycopg
+    if not finding_ids:
+        return 0
     with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
         cur = conn.execute(
             "UPDATE findings SET disposition='superseded_by_revision', "
-            "disposition_detail=%s WHERE run_id=%s "
+            "disposition_detail=%s WHERE run_id=%s AND finding_id = ANY(%s) "
             "AND COALESCE(disposition,'') <> 'superseded_by_revision'",
-            (f"superseded by round-{round_n} re-synthesis", run_id))
+            (f"superseded by round-{round_n} re-synthesis", run_id, list(finding_ids)))
         return cur.rowcount or 0
 
 

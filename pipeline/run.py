@@ -522,9 +522,16 @@ def _process_admitted(run_id: int, question: str) -> int:
                     extract.extract_run(run_id)
                 except Exception as e:
                     print(f"[followup:extract] {type(e).__name__}: {e}", file=sys.stderr)
-                followup.supersede_findings(run_id, rnd)
                 _set_status(run_id, "synthesizing")
-                synthesize.synthesize(run_id, question)
+                prior_ids = followup.current_finding_ids(run_id)
+                if not synthesize.synthesize(run_id, question):
+                    # No replacements were stored (truncated, parse failure, or genuinely empty).
+                    # The round's evidence is kept, the round-0 findings stay accepted, and the
+                    # run ships what it already had rather than nothing.
+                    _append_note(run_id, f"followup round {rnd}: re-synthesis produced no "
+                                         f"findings — keeping the previous set, stopping")
+                    break
+                followup.supersede_findings(run_id, rnd, prior_ids)
                 try:
                     figures.cross_check(run_id)
                 except Exception as e:

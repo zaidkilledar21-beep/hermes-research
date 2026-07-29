@@ -458,3 +458,29 @@ An unparseable request is renamed to `.unparseable` and logged loudly instead of
   why it was unreadable; destroying it converts a five-minute diagnosis into a blind search.
 - Bugs whose probability scales with payload size lie dormant through every small test and fire the
   first time the system does something ambitious.
+
+## 36. Retiring the old thing before the new thing exists
+Run 79 finished `gated` with zero accepted findings while holding five perfectly good ones. The
+followup loop superseded the round-0 finding set BEFORE calling re-synthesis, on the assumption
+that re-synthesis always produces a replacement. It does not: this call came back `truncated`
+(minimax-m3, 12000 output tokens, JSON cut mid-array), stored nothing, and left the run with a
+finding set that was 100% `superseded_by_revision` — invisible to the gate, invisible to the
+report, and irrecoverable without a manual UPDATE.
+
+Every individual piece behaved as designed. `supersede_findings` did what it said. `synthesize`
+correctly recorded `synthesis_state='truncated'` and returned 0. The gate correctly found nothing
+to accept. The defect lived in the ORDER, and only in the order.
+
+Note what the round-1 collection had already bought: +394 evidence items, unknowns 1 -> 0. All of
+it paid for, none of it shippable, because the bookkeeping step ran first.
+
+**Fix:** capture the prior finding ids, synthesize, and supersede those ids only once synthesis
+reports it stored something. A round whose re-synthesis yields nothing now keeps the previous set
+and stops, so the run delivers what it already had.
+**Takeaways:**
+- Sequence a replacement as new-then-retire, never retire-then-new. Between the two steps is a
+  window where the system owns nothing, and the second step is exactly the one that can fail.
+- "This step always succeeds" is an assumption, and an assumption in an ordering is invisible in
+  code review because both lines are individually correct.
+- A fail-soft return value (`0 findings`) is only fail-soft if the CALLER branches on it. Returning
+  a sentinel nobody checks is the same as raising into an empty `except`.
